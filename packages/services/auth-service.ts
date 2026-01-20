@@ -19,7 +19,6 @@ export class AuthService {
 
   private initialize() {
     try {
-      // Run diagnostic
       debugEnv();
 
       const supabaseUrl = getEnv('SUPABASE_URL');
@@ -28,15 +27,16 @@ export class AuthService {
       console.group('AuthService: Configuration Bridge');
       
       if (supabaseUrl && supabaseAnonKey) {
-        console.log('✅ SUPABASE_URL: Found');
-        console.log('✅ SUPABASE_ANON_KEY: Found');
-        
-        this.supabase = createClient(supabaseUrl, supabaseAnonKey);
+        this.supabase = createClient(supabaseUrl, supabaseAnonKey, {
+          auth: {
+            persistSession: true,
+            autoRefreshToken: true,
+            detectSessionInUrl: true
+          }
+        });
         console.log('✅ Supabase Client generated successfully.');
       } else {
         console.error('❌ Configuration missing in all layers (process.env, import.meta, window).');
-        console.log('Requested URL Detected:', !!supabaseUrl);
-        console.log('Requested KEY Detected:', !!supabaseAnonKey);
       }
       console.groupEnd();
     } catch (err) {
@@ -56,7 +56,7 @@ export class AuthService {
       this.initialize(); 
       if (!this.supabase) {
         throw new AuthError(
-          'Authentication service is not properly configured. Ensure SUPABASE_URL and SUPABASE_ANON_KEY are set in your .env.local file.', 
+          'Authentication service is not properly configured. Ensure SUPABASE_URL and SUPABASE_ANON_KEY are set in your environment.', 
           'CONFIG_ERROR'
         );
       }
@@ -64,13 +64,28 @@ export class AuthService {
     return this.supabase.auth;
   }
 
-  async sendOtp(phone: string) {
+  /**
+   * Universal OTP sender for both Phone and Email.
+   */
+  async sendOtp(identifier: string, type: 'email' | 'phone') {
     try {
       const auth = this.getAuthClient();
-      const { error } = await auth.signInWithOtp({
-        phone,
-        options: { channel: 'sms' },
-      });
+      const options: any = {
+        options: { 
+          shouldCreateUser: true,
+          emailRedirectTo: getRedirectUrl()
+        }
+      };
+
+      if (type === 'phone') {
+        options.phone = identifier;
+        options.options.channel = 'sms';
+      } else {
+        options.email = identifier;
+      }
+
+      const { error } = await auth.signInWithOtp(options);
+      
       if (error) throw new AuthError(error.message, error.status?.toString());
       return { success: true };
     } catch (err: any) {
@@ -79,19 +94,90 @@ export class AuthService {
     }
   }
 
-  async verifyOtp(phone: string, token: string) {
+  /**
+   * Email + Password Sign Up (RESTORED)
+   */
+  async signUp(email: string, password: string) {
     try {
       const auth = this.getAuthClient();
-      const { data, error } = await auth.verifyOtp({
-        phone,
-        token,
-        type: 'sms',
+      const { data, error } = await auth.signUp({
+        email,
+        password,
+        options: {
+          emailRedirectTo: getRedirectUrl(),
+        }
       });
+
+      if (error) throw new AuthError(error.message, error.status?.toString());
+      return data;
+    } catch (err: any) {
+      if (err instanceof AuthError) throw err;
+      throw new AuthError(err.message || 'Signup failed.', 'AUTH_ERROR');
+    }
+  }
+
+  /**
+   * Password-based Sign In (RESTORED)
+   */
+  async signInWithPassword(email: string, password: string) {
+    try {
+      const auth = this.getAuthClient();
+      const { data, error } = await auth.signInWithPassword({
+        email,
+        password,
+      });
+
+      if (error) throw new AuthError(error.message, error.status?.toString());
+      return data;
+    } catch (err: any) {
+      if (err instanceof AuthError) throw err;
+      throw new AuthError(err.message || 'Login failed.', 'AUTH_ERROR');
+    }
+  }
+
+  /**
+   * Universal Social Sign-In (OAuth)
+   */
+  async signInWithSocial(provider: 'google' | 'apple' | 'azure' | 'facebook') {
+    try {
+      const auth = this.getAuthClient();
+      const { error } = await auth.signInWithOAuth({
+        provider,
+        options: {
+          redirectTo: getRedirectUrl(),
+        },
+      });
+
+      if (error) throw new AuthError(error.message, error.status?.toString());
+      return { success: true };
+    } catch (err: any) {
+      if (err instanceof AuthError) throw err;
+      throw new AuthError(err.message || `Failed to sign in with ${provider}.`, 'SOCIAL_AUTH_FAILED');
+    }
+  }
+
+  /**
+   * Universal OTP verifier for both Phone and Email.
+   */
+  async verifyOtp(identifier: string, token: string, type: 'email' | 'phone') {
+    try {
+      const auth = this.getAuthClient();
+      const verifyOptions: any = {
+        token,
+        type: type === 'phone' ? 'sms' : 'email',
+      };
+
+      if (type === 'phone') {
+        verifyOptions.phone = identifier;
+      } else {
+        verifyOptions.email = identifier;
+      }
+
+      const { data, error } = await auth.verifyOtp(verifyOptions);
 
       if (error) throw new AuthError(error.message, error.status?.toString());
       if (!data.user) throw new AuthError('Verification failed.', 'AUTH_FAILED');
 
-      await this.checkProfileInitialization(data.user.id);
       return data;
     } catch (err: any) {
       if (err instanceof AuthError) throw err;
@@ -99,45 +185,12 @@ export class AuthService {
     }
   }
 
-  async signUpWithEmail(email: string, password: string) {
+  async signOut() {
     try {
       const auth = this.getAuthClient();
-      const { data, error } = await auth.signUp({ email, password });
-      if (error) throw new AuthError(error.message, error.status?.toString());
-      return data;
-    } catch (err: any) {
-      if (err instanceof AuthError) throw err;
-      throw new AuthError(err.message || 'Signup failed.', 'AUTH_FAILED');
-    }
-  }
-
-  async signInWithEmail(email: string, password: string) {
-    try {
-      const auth = this.getAuthClient();
-      const { data, error } = await auth.signInWithPassword({ email, password });
-      if (error) throw new AuthError(error.message, error.status?.toString());
-      return data;
-    } catch (err: any) {
-      if (err instanceof AuthError) throw err;
-      throw new AuthError(err.message || 'Invalid email or password', 'AUTH_FAILED');
-    }
-  }
-
-  async signInWithSocial(provider: 'google' | 'apple' | 'facebook' | 'azure') {
-    try {
-      const auth = this.getAuthClient();
-      const { data, error } = await auth.signInWithOAuth({
-        provider,
-        options: {
-          redirectTo: getRedirectUrl(),
-          skipBrowserRedirect: false,
-        },
-      });
-      if (error) throw new AuthError(error.message, error.status?.toString());
-      return data;
-    } catch (err: any) {
-      if (err instanceof AuthError) throw err;
-      throw new AuthError(err.message || `Connection failed with ${provider}.`, 'OAUTH_FAILED');
+      await auth.signOut();
+    } catch (err) {
+      console.error('Signout failed:', err);
     }
   }
 
@@ -146,15 +199,10 @@ export class AuthService {
     return this.supabase;
   }
 
-  private async checkProfileInitialization(userId: string): Promise<boolean> {
+  async checkProfileInitialization(userId: string): Promise<boolean> {
     if (!this.supabase) return false;
-    const MAX_ATTEMPTS = 6;
-    for (let i = 0; i < MAX_ATTEMPTS; i++) {
-      const { data } = await this.supabase.from('profiles').select('id').eq('id', userId).maybeSingle();
-      if (data) return true;
-      await new Promise((resolve) => setTimeout(resolve, 500));
-    }
-    return false;
+    const { data } = await this.supabase.from('profiles').select('id, username').eq('id', userId).maybeSingle();
+    return !!(data && data.username);
   }
 }
 

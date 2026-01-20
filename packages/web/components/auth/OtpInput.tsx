@@ -1,16 +1,15 @@
-
 import React, { useState, useRef, useEffect } from 'react';
 import { authService } from '../../../../packages/services/auth-service.ts';
 import { ChevronLeft } from 'lucide-react';
 
 interface OtpInputProps {
-  phone?: string;
-  email?: string;
+  identifier: string;
+  type: 'email' | 'phone';
   onSuccess: (data: any) => void;
   onBack: () => void;
 }
 
-export const OtpInput: React.FC<OtpInputProps> = ({ phone, email, onSuccess, onBack }) => {
+export const OtpInput: React.FC<OtpInputProps> = ({ identifier, type, onSuccess, onBack }) => {
   const [otp, setOtp] = useState(['', '', '', '', '', '']);
   const [timer, setTimer] = useState(60);
   const [loading, setLoading] = useState(false);
@@ -20,10 +19,11 @@ export const OtpInput: React.FC<OtpInputProps> = ({ phone, email, onSuccess, onB
   const [resendDisabled, setResendDisabled] = useState(false);
   const inputRefs = useRef<(HTMLInputElement | null)[]>([]);
 
-  const targetIdentifier = phone ? phone : email;
-  const maskedIdentifier = targetIdentifier ? targetIdentifier.replace(/^(.*)(.{4})$/, (_, p1, p2) => p1.replace(/./g, '*') + p2) : '...';
+  // Improved masking logic
+  const maskedIdentifier = type === 'email' 
+    ? identifier.replace(/(.{3})(.*)(?=@)/, (gp1, gp2, gp3) => gp2 + gp3.replace(/./g, '*'))
+    : identifier.replace(/^(.*)(.{4})$/, (_, p1, p2) => p1.replace(/./g, '*') + p2);
 
-  // Countdown timer logic
   useEffect(() => {
     let interval: any;
     if (timer > 0) {
@@ -41,12 +41,10 @@ export const OtpInput: React.FC<OtpInputProps> = ({ phone, email, onSuccess, onB
     setOtp(newOtp);
     setError(null);
 
-    // Auto-focus logic
     if (digit && index < 5) {
       inputRefs.current[index + 1]?.focus();
     }
 
-    // Auto-submit logic
     if (newOtp.every(digit => digit !== '')) {
       handleVerify(newOtp.join(''));
     }
@@ -66,11 +64,11 @@ export const OtpInput: React.FC<OtpInputProps> = ({ phone, email, onSuccess, onB
     setLoading(true);
     setError(null);
     try {
-      const data = await authService.verifyOtp(phone || '', code);
+      const data = await authService.verifyOtp(identifier, code, type);
       onSuccess(data);
     } catch (err: any) {
       setIsShake(true);
-      setError("Invalid code. Try again.");
+      setError(err.message || "Invalid code. Try again.");
       setOtp(['', '', '', '', '', '']);
       inputRefs.current[0]?.focus();
       setTimeout(() => setIsShake(false), 500);
@@ -84,17 +82,15 @@ export const OtpInput: React.FC<OtpInputProps> = ({ phone, email, onSuccess, onB
     
     if (resendAttempts >= 5) {
       setResendDisabled(true);
-      setError("Too many attempts. Try again in 10 minutes.");
+      setError("Too many attempts. Please wait.");
       return;
     }
 
     try {
-      await authService.sendOtp(phone || '');
+      await authService.sendOtp(identifier, type);
       setTimer(60);
       setResendAttempts(prev => prev + 1);
       setError(null);
-      // Toast Simulation
-      console.log(`New code sent to ${targetIdentifier}`);
     } catch (err: any) {
       setError('Connection lost. Retry?');
     }
@@ -117,10 +113,9 @@ export const OtpInput: React.FC<OtpInputProps> = ({ phone, email, onSuccess, onB
           </button>
 
           <div className="mt-2">
-            <h1 className="text-[24px] font-bold text-[#1F2937]">Enter Verification Code</h1>
-            <p className="text-[14px] text-[#9CA3AF] mt-1">
-              We sent a code to {maskedIdentifier}{' '}
-              <button onClick={onBack} className="text-[#007BFF] hover:underline transition-all">Change</button>
+            <h1 className="text-[24px] font-bold text-[#1F2937]">Check Your {type === 'email' ? 'Inbox' : 'Messages'}</h1>
+            <p className="text-[14px] text-[#9CA3AF] mt-1 font-medium leading-relaxed">
+              We sent a 6-digit code to <span className="text-[#1F2937] font-bold">{maskedIdentifier}</span>
             </p>
           </div>
         </div>
@@ -140,9 +135,9 @@ export const OtpInput: React.FC<OtpInputProps> = ({ phone, email, onSuccess, onB
               onKeyDown={(e) => handleKeyDown(e, i)}
               autoFocus={i === 0}
               className={`
-                w-[56px] h-[56px] md:w-[64px] md:h-[64px] text-center text-2xl font-bold rounded-xl outline-none transition-all duration-300
+                w-full h-[56px] md:h-[64px] text-center text-2xl font-bold rounded-xl outline-none transition-all duration-300
                 ${digit !== '' ? 'border-2 border-[#39FF14]' : 'border border-[#E5E7EB]'}
-                focus:border-2 focus:border-[#007BFF] text-[#1F2937] bg-white
+                focus:border-2 focus:border-[#007BFF] text-[#1F2937] bg-white shadow-sm
               `}
             />
           ))}
@@ -151,7 +146,7 @@ export const OtpInput: React.FC<OtpInputProps> = ({ phone, email, onSuccess, onB
         {/* Resend Section */}
         <div className="px-6 text-center">
           {timer > 0 ? (
-            <p className="text-sm font-medium text-[#9CA3AF]">Resend code in 0:{timer.toString().padStart(2, '0')}</p>
+            <p className="text-sm font-bold text-[#9CA3AF] uppercase tracking-widest text-[10px]">Resend in 0:{timer.toString().padStart(2, '0')}</p>
           ) : (
             <p className="text-sm font-medium text-[#9CA3AF]">
               Didn't receive it?{' '}
@@ -166,7 +161,7 @@ export const OtpInput: React.FC<OtpInputProps> = ({ phone, email, onSuccess, onB
           )}
         </div>
 
-        {/* Error / Toast Simulation */}
+        {/* Error */}
         <div className="px-6 h-10 mt-4">
            {error && <p className="text-[#EF4444] text-xs font-semibold text-center animate-in fade-in">{error}</p>}
         </div>
@@ -178,7 +173,7 @@ export const OtpInput: React.FC<OtpInputProps> = ({ phone, email, onSuccess, onB
             disabled={!isFormFilled || loading}
             className="w-full h-12 bg-[#007BFF] disabled:bg-[#E5E7EB] text-white font-black uppercase tracking-[0.2em] rounded-xl transition-all shadow-lg shadow-blue-500/20 active:scale-[0.98]"
           >
-            {loading ? 'Verifying...' : 'Verify'}
+            {loading ? 'Verifying...' : 'Verify & Continue'}
           </button>
         </div>
 
@@ -190,7 +185,7 @@ export const OtpInput: React.FC<OtpInputProps> = ({ phone, email, onSuccess, onB
           25% { transform: translateX(-8px); }
           75% { transform: translateX(8px); }
         }
-        .animate-shake { animation: shake 0.2s ease-in-out 0s 2; }
+        .animate-shake { animation: shake 0.1s ease-in-out 0s 2; }
       `}</style>
     </div>
   );
