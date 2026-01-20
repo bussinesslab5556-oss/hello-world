@@ -1,0 +1,8 @@
+{
+  "name": "Messaging",
+  "description": "A centralized dashboard for Chapter 1 of the Messaging project, detailing monorepo architecture, brand guidelines, subscription limits, and required environment configurations.",
+  "requestFramePermissions": [
+    "camera",
+    "microphone"
+  ]
+}
