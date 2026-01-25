@@ -1,7 +1,6 @@
-
 import React, { useState, useEffect } from 'react';
-import { profileService } from '../../../../packages/services/profile-service.ts';
-import { Profile, IndustryMode, ToneControl } from '../../../../packages/types/profile.ts';
+import { profileService } from '../../../../../packages/services/profile-service.ts';
+import { Profile, IndustryMode, ToneControl } from '../../../../../packages/types/profile.ts';
 import { Cpu, Brain, Layers } from 'lucide-react';
 
 const INDUSTRIES: IndustryMode[] = ['General', 'Business', 'Freelance', 'Legal', 'Medical', 'Tech'];
@@ -39,7 +38,6 @@ export const AIConfig: React.FC<{ userId: string }> = ({ userId }) => {
       </div>
 
       <div className="space-y-8">
-        {/* Industry Selection */}
         <div className="space-y-4">
           <div className="flex items-center gap-2 px-1">
             <Layers size={14} className="text-[#9CA3AF]" />
@@ -62,7 +60,6 @@ export const AIConfig: React.FC<{ userId: string }> = ({ userId }) => {
           </div>
         </div>
 
-        {/* Tone Control */}
         <div className="space-y-4">
           <div className="flex items-center gap-2 px-1">
             <Cpu size={14} className="text-[#9CA3AF]" />

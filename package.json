@@ -9,12 +9,14 @@
     "preview": "vite preview"
   },
   "dependencies": {
-    "react-dom": "^19.2.3",
-    "react": "^19.2.3",
-    "@supabase/supabase-js": "^2.90.1",
+    "react": "18.2.0",
+    "react-dom": "18.2.0",
+    "@supabase/supabase-js": "2.45.4",
     "lucide-react": "0.460.0",
-    "@100mslive/react-sdk": "^0.10.0",
-    "microsoft-cognitiveservices-speech-sdk": "^1.34.0"
+    "@100mslive/react-sdk": "0.10.11",
+    "@100mslive/hms-video-store": "0.12.11",
+    "microsoft-cognitiveservices-speech-sdk": "1.34.0",
+    "eventemitter2": "6.4.9"
   },
   "devDependencies": {
     "@types/node": "^22.14.0",

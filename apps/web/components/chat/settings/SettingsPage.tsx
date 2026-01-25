@@ -1,10 +1,9 @@
-
 import React from 'react';
 import { ProfileSection } from './ProfileSection.tsx';
 import { UsageDashboard } from './UsageDashboard.tsx';
 import { AIConfig } from './AIConfig.tsx';
 import { Settings, LogOut, X, CreditCard } from 'lucide-react';
-import { authService } from '../../../../packages/services/auth-service.ts';
+import { authService } from '../../../../../packages/services/auth-service.ts';
 
 interface SettingsPageProps {
   userId: string;
@@ -87,8 +86,7 @@ export const SettingsPage: React.FC<SettingsPageProps> = ({ userId, onClose }) =
 
                 <button 
                   onClick={() => {
-                    // Actual logout logic would go here
-                    console.log('Terminating session...');
+                    authService.signOut();
                     window.location.reload();
                   }}
                   className="w-full py-4 bg-[#EF4444]/10 hover:bg-[#EF4444] text-[#EF4444] hover:text-white border border-[#EF4444]/20 rounded-2xl flex items-center justify-center gap-3 transition-all active:scale-95 group font-black uppercase text-xs tracking-widest"

@@ -1,4 +1,6 @@
 
+import { getSiteUrl } from './env-config.ts';
+
 /**
  * Auth Configuration & Redirect Logic
  * Shared across Web and Mobile environments.
@@ -22,12 +24,12 @@ export const getRedirectUrl = (): string => {
   const isWeb = typeof window !== 'undefined';
   
   if (isWeb) {
-    // For Next.js/Web: Redirect back to the auth callback route
-    return `${window.location.origin}/auth/callback`;
+    // Standardized production callback path
+    const siteUrl = getSiteUrl();
+    return `${siteUrl}/auth/callback`;
   }
 
   // For React Native/Mobile: Redirect to the app's deep link
-  // Replace with your actual app scheme defined in app.json/Info.plist
   return 'com.messaging.app://auth-callback';
 };
 

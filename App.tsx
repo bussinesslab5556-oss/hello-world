@@ -1,98 +1,155 @@
-import React, { useState, useEffect } from 'react';
+
+import React, { useState, useEffect, useCallback } from 'react';
 import { AuthForm } from './packages/web/components/auth/AuthForm.tsx';
 import { OtpInput } from './packages/web/components/auth/OtpInput.tsx';
 import { OnboardingForm } from './packages/web/components/profile/OnboardingForm.tsx';
 import { ChatWindow } from './apps/web/components/chat/ChatWindow.tsx';
-import { MinimizedCallPill } from './apps/web/components/calls/MinimizedCallPill.tsx';
-import { SettingsPage } from './apps/web/components/settings/SettingsPage.tsx';
+import { ChatList } from './apps/web/components/ChatList.tsx';
+import { SettingsPage } from './apps/web/components/chat/settings/SettingsPage.tsx';
 import { WelcomeScreen } from './apps/web/components/welcome/WelcomeScreen.tsx';
 import { PricingTable } from './apps/web/components/pricing/PricingTable.tsx';
-import { profileService } from './packages/services/profile-service.ts';
 import { authService } from './packages/services/auth-service.ts';
-import { MessageSquare, Bell, LayoutGrid, Layers, Ghost, LogOut } from 'lucide-react';
+import { notificationService } from './packages/services/notification-service.ts';
+import { aiModelService } from './packages/services/ai-model-service.ts';
+import { getSiteUrl } from './packages/utils/env-config.ts';
+import { MessageSquare, Bell, LayoutGrid, Layers, LogOut, AlertCircle, RefreshCw } from 'lucide-react';
 
-type AppState = 'loading' | 'welcome' | 'auth' | 'otp' | 'onboarding' | 'dashboard' | 'pricing';
+type AppState = 'loading' | 'welcome' | 'auth' | 'otp' | 'onboarding' | 'dashboard' | 'pricing' | 'error' | 'auth-callback';
 type NavTab = 'chats' | 'stories' | 'notifications';
 
 const App: React.FC = () => {
   const [appState, setAppState] = useState<AppState>('loading');
+  const [initProgress, setInitProgress] = useState(0);
+  const [initStage, setInitStage] = useState('Synchronizing Link...');
+  const [criticalError, setCriticalError] = useState<string | null>(null);
+  
   const [authMode, setAuthMode] = useState<'signUp' | 'signIn'>('signUp');
   const [activeTab, setActiveTab] = useState<NavTab>('chats');
   const [userId, setUserId] = useState<string | null>(null);
-  const [pendingAuth, setPendingAuth] = useState<{ identifier: string; type: 'email' | 'phone' } | null>(null);
-  const [isOnline, setIsOnline] = useState(navigator.onLine);
+  const [activeChatId, setActiveChatId] = useState<string>('demo-chat');
   
-  const [activeCall, setActiveCall] = useState<{ type: 'audio' | 'video'; peer: string } | null>(null);
-  const [isMinimized, setIsMinimized] = useState(false);
   const [showSettings, setShowSettings] = useState(false);
+  const detectedUrl = getSiteUrl();
+
+  const handleSessionFound = useCallback(async (uid: string) => {
+    setUserId(uid);
+    try {
+      // Clean URL fragment/params once session is established
+      if (window.location.hash || window.location.search.includes('code=')) {
+        window.history.replaceState(null, '', window.location.origin);
+      }
+
+      const isComplete = await authService.checkProfileInitialization(uid);
+      setAppState(isComplete ? 'dashboard' : 'onboarding');
+      notificationService.requestPermissionAndSaveToken(uid);
+    } catch (err) {
+      console.error('Session sync failed:', err);
+      setAppState('dashboard'); 
+    }
+  }, []);
 
   useEffect(() => {
-    const handleOnline = () => setIsOnline(true);
-    const handleOffline = () => setIsOnline(false);
-    window.addEventListener('online', handleOnline);
-    window.addEventListener('offline', handleOffline);
+    const subscription = authService.onAuthStateChange(async (event, session) => {
+      console.log(`[Neural Link] Auth Event: ${event}`);
+      if (session?.user) {
+        handleSessionFound(session.user.id);
+      } else if (event === 'SIGNED_OUT') {
+        setUserId(null);
+        setAppState('welcome');
+      }
+    });
 
-    const checkSession = async () => {
+    return () => {
+      subscription.unsubscribe();
+    };
+  }, [handleSessionFound]);
+
+  useEffect(() => {
+    const initializeApp = async () => {
       try {
-        const client = authService.getSupabase();
-        if (!client) throw new Error('Config missing');
+        console.log(`[Neural Link] Site Origin: ${detectedUrl}`);
         
-        const { data: { session } } = await client.auth.getSession();
+        // DEDICATED ROUTE: /auth/callback
+        const isAuthCallback = window.location.pathname === '/auth/callback' || 
+                               window.location.search.includes('code=') || 
+                               window.location.hash.includes('access_token');
+
+        if (isAuthCallback) {
+          setAppState('auth-callback');
+          setInitStage('Finalizing Neural Link...');
+          
+          // Check for PKCE code in query params
+          const params = new URLSearchParams(window.location.search);
+          const code = params.get('code');
+          if (code) {
+            await authService.exchangeCodeForSession(code);
+            // The onAuthStateChange listener will handle the transition once the session is set
+            return;
+          }
+        }
+
+        setInitStage('Loading Neural Weights...');
+        await aiModelService.loadModel((p) => setInitProgress(p));
+
+        setInitStage('Verifying Neural Signature...');
+        const auth = authService.getAuthClient();
+        const { data: { session } } = await auth.getSession();
         
         if (!session) {
-          setAppState('welcome');
+          if (!isAuthCallback) setAppState('welcome');
           return;
         }
         
-        const user = session.user;
-        setUserId(user.id);
-        
-        // Profile check
-        const isComplete = await authService.checkProfileInitialization(user.id);
-        setAppState(isComplete ? 'dashboard' : 'onboarding');
-      } catch (err) {
-        setAppState('welcome');
+        await handleSessionFound(session.user.id);
+      } catch (err: any) {
+        console.error('Boot sequence interrupted:', err);
+        setAppState('error');
+        setCriticalError(err.message || 'Critical neural link failure.');
       }
     };
     
-    checkSession();
-    return () => {
-      window.removeEventListener('online', handleOnline);
-      window.removeEventListener('offline', handleOffline);
-    };
-  }, []);
+    initializeApp();
+  }, [handleSessionFound, detectedUrl]);
 
-  const handleAuthSuccess = async (data: any) => {
-    if (data.step === 'otp') {
-      setPendingAuth({ identifier: data.identifier, type: data.type });
-      setAppState('otp');
-    } else {
-      const user = data.user || data;
-      setUserId(user.id);
-      const isComplete = await authService.checkProfileInitialization(user.id);
-      setAppState(isComplete ? 'dashboard' : 'onboarding');
-    }
-  };
-
-  const handleLogout = async () => {
-    await authService.signOut();
-    setUserId(null);
-    setAppState('welcome');
-  };
-
-  // --- SCREEN RENDERERS ---
-
-  if (appState === 'loading') {
+  if (appState === 'error') {
     return (
-      <div className="min-h-screen bg-[#2B2F36] flex flex-col items-center justify-center gap-6">
-        <div className="w-16 h-16 bg-[#007BFF] rounded-2xl flex items-center justify-center text-white text-3xl font-black italic shadow-[0_0_40px_rgba(0,123,255,0.3)] animate-pulse">
-          M
+      <div className="min-h-screen bg-[#0B141A] flex flex-col items-center justify-center p-8 text-center animate-in fade-in duration-500">
+        <div className="w-20 h-20 bg-[#EF4444]/10 rounded-3xl flex items-center justify-center text-[#EF4444] mb-8 border border-[#EF4444]/20 shadow-[0_0_40px_rgba(239,68,68,0.1)]">
+          <AlertCircle size={40} />
         </div>
-        <div className="flex flex-col items-center gap-2">
-           <span className="text-[10px] font-black text-white uppercase tracking-[0.6em] italic opacity-50">Initializing Neural Link</span>
-           <div className="w-32 h-1 bg-white/5 rounded-full overflow-hidden">
-             <div className="h-full bg-[#007BFF] animate-[loading_2s_infinite]" style={{ width: '40%' }}></div>
+        <h1 className="text-xl font-black text-white uppercase tracking-widest italic mb-2">Neural Link Interrupted</h1>
+        <p className="text-sm text-[#9CA3AF] font-bold uppercase tracking-widest max-w-sm mb-8 leading-relaxed">
+          {criticalError}
+        </p>
+        <button 
+          onClick={() => window.location.reload()}
+          className="flex items-center gap-3 px-8 py-3 bg-[#007BFF] hover:bg-blue-600 rounded-2xl text-[10px] font-black text-white uppercase tracking-[0.2em] transition-all shadow-lg active:scale-95"
+        >
+          <RefreshCw size={14} />
+          Restart Neural Sync
+        </button>
+      </div>
+    );
+  }
+
+  if (appState === 'loading' || appState === 'auth-callback') {
+    return (
+      <div className="min-h-screen bg-[#0B141A] flex flex-col items-center justify-center gap-8 relative overflow-hidden">
+        <div className="relative">
+          <div className="absolute inset-0 bg-[#007BFF] rounded-3xl blur-2xl opacity-20 animate-pulse"></div>
+          <div className="w-16 h-16 bg-[#007BFF] rounded-2xl flex items-center justify-center text-white text-3xl font-black italic relative shadow-2xl">M</div>
+        </div>
+        
+        <div className="flex flex-col items-center gap-4 w-full max-w-[240px]">
+           <div className="w-full h-1 bg-white/5 rounded-full overflow-hidden">
+             <div 
+               className="h-full bg-[#007BFF] transition-all duration-300 shadow-[0_0_10px_#007BFF]" 
+               style={{ width: `${initProgress}%` }}
+             />
            </div>
+           <span className="text-[9px] font-black text-white uppercase tracking-[0.4em] italic opacity-50 animate-pulse">
+             {initStage}
+           </span>
         </div>
       </div>
     );
@@ -122,7 +179,9 @@ const App: React.FC = () => {
       <AuthForm 
         initialMode={authMode} 
         onBack={() => setAppState('welcome')} 
-        onSuccess={handleAuthSuccess}
+        onSuccess={(data) => {
+          if (data?.user?.id) handleSessionFound(data.user.id);
+        }} 
       />
     );
   }
@@ -130,14 +189,11 @@ const App: React.FC = () => {
   if (appState === 'otp') {
     return (
       <OtpInput 
-        identifier={pendingAuth?.identifier || ''}
-        type={pendingAuth?.type || 'email'}
+        identifier=""
+        type="email"
         onBack={() => setAppState('auth')}
-        onSuccess={async (data) => {
-          const user = data.user || data;
-          setUserId(user.id);
-          const isComplete = await authService.checkProfileInitialization(user.id);
-          setAppState(isComplete ? 'dashboard' : 'onboarding');
+        onSuccess={(data) => {
+          if (data?.user?.id) handleSessionFound(data.user.id);
         }}
       />
     );
@@ -149,66 +205,57 @@ const App: React.FC = () => {
 
   return (
     <main className="min-h-screen bg-[#2B2F36] flex flex-col md:flex-row overflow-hidden relative">
-      
-      {/* GLOBAL NAVIGATION */}
-      <nav className="fixed bottom-0 left-0 right-0 h-16 bg-[#1F2329] border-t border-white/5 md:relative md:h-full md:w-24 md:border-t-0 md:border-r flex md:flex-col items-center justify-between py-6 z-[100] shadow-2xl">
+      <nav className="fixed bottom-0 left-0 right-0 h-16 bg-[#1F2329] border-t border-white/5 md:relative md:h-full md:w-20 md:border-t-0 md:border-r flex md:flex-col items-center justify-between py-6 z-[100] shadow-2xl shrink-0">
         <div className="hidden md:flex flex-col items-center gap-10">
-           <div className="w-12 h-12 bg-[#007BFF] rounded-[18px] flex items-center justify-center text-white text-xl font-black italic shadow-lg">M</div>
+           <div className="w-10 h-10 bg-[#007BFF] rounded-xl flex items-center justify-center text-white text-lg font-black italic shadow-lg">M</div>
         </div>
         
         <div className="flex md:flex-col items-center justify-center gap-10 flex-1">
-          <button onClick={() => setActiveTab('chats')} className={`flex flex-col items-center gap-1 transition-all ${activeTab === 'chats' ? 'text-[#007BFF]' : 'text-white/30 hover:text-white'}`}>
-            <MessageSquare size={26} strokeWidth={2.5} />
+          <button onClick={() => { setActiveTab('chats'); setActiveChatId('demo-chat'); }} className={`flex flex-col items-center gap-1 transition-all ${activeTab === 'chats' ? 'text-[#007BFF]' : 'text-white/30 hover:text-white'}`}>
+            <MessageSquare size={24} strokeWidth={2.5} />
           </button>
           <button onClick={() => setActiveTab('stories')} className={`flex flex-col items-center gap-1 transition-all ${activeTab === 'stories' ? 'text-[#007BFF]' : 'text-white/30 hover:text-white'}`}>
-            <Layers size={26} strokeWidth={2.5} />
+            <Layers size={24} strokeWidth={2.5} />
           </button>
           <button onClick={() => setActiveTab('notifications')} className={`flex flex-col items-center gap-1 transition-all ${activeTab === 'notifications' ? 'text-[#007BFF]' : 'text-white/30 hover:text-white'}`}>
-            <Bell size={26} strokeWidth={2.5} />
+            <Bell size={24} strokeWidth={2.5} />
           </button>
-          <button onClick={() => setShowSettings(true)} className="text-white/30 hover:text-white">
-            <LayoutGrid size={26} />
+          <button onClick={() => setShowSettings(true)} className="text-white/30 hover:text-white transition-all hover:rotate-90">
+            <LayoutGrid size={24} />
           </button>
         </div>
 
-        <button onClick={handleLogout} className="hidden md:block text-white/20 hover:text-[#EF4444] transition-colors">
-          <LogOut size={24} />
+        <button onClick={() => authService.signOut()} className="hidden md:block text-white/20 hover:text-[#EF4444] transition-colors">
+          <LogOut size={22} />
         </button>
       </nav>
 
-      {/* WORKSPACE */}
-      <div className="flex-1 flex flex-col md:flex-row h-screen transition-all duration-700 pb-16 md:pb-0">
-        <aside className="hidden md:flex w-80 lg:w-96 bg-[#1F2329]/50 border-r border-white/5 flex-col">
-           <div className="p-6">
-              <h2 className="text-2xl font-black text-white italic tracking-tighter uppercase mb-8">Conversations</h2>
-              <div className="space-y-4">
-                 <div className="p-4 bg-white/5 rounded-2xl border border-[#39FF14]/20 flex items-center gap-4 cursor-pointer hover:bg-white/10 transition-all group">
-                    <div className="w-12 h-12 rounded-full bg-gray-800 border-2 border-white/5" />
-                    <div className="flex-1 min-w-0">
-                       <p className="text-sm font-black text-white uppercase italic truncate">Neural Agent</p>
-                       <p className="text-[11px] text-[#9CA3AF] font-bold truncate">Establishing secure link...</p>
-                    </div>
-                 </div>
-              </div>
-           </div>
-        </aside>
-
-        <section className="flex-1 relative flex flex-col bg-[#2B2F36] min-w-0">
-          {activeCall && isMinimized && (
-            <MinimizedCallPill 
-              peerName={activeCall.peer} 
-              callType={activeCall.type} 
-              onExpand={() => setIsMinimized(false)} 
-              onEnd={() => setActiveCall(null)}
-            />
-          )}
-
-          <ChatWindow 
-            chatId="demo-chat" 
-            currentUserId={userId!} 
-            recipientName="Neural Agent" 
-            onStartCall={(type) => { setActiveCall({ type, peer: 'Neural Agent' }); setIsMinimized(false); }}
+      <div className="flex-1 flex flex-col md:flex-row h-screen transition-all duration-700 pb-16 md:pb-0 min-w-0">
+        <div className={`w-full md:w-80 lg:w-96 flex-none ${activeChatId && window.innerWidth < 768 ? 'hidden' : 'flex'}`}>
+          <ChatList 
+            userId={userId!} 
+            activeChatId={activeChatId}
+            onChatSelect={(id) => setActiveChatId(id)}
+            onProfileClick={() => setShowSettings(true)}
           />
+        </div>
+
+        <section className={`flex-1 relative flex flex-col bg-[#2B2F36] min-w-0 ${!activeChatId && window.innerWidth < 768 ? 'hidden' : 'flex'}`}>
+          {activeChatId ? (
+            <ChatWindow 
+              chatId={activeChatId} 
+              currentUserId={userId!} 
+              recipientName={activeChatId === 'demo-chat' ? 'Neural Agent' : 'Contact'} 
+            />
+          ) : (
+            <div className="hidden md:flex flex-col items-center justify-center h-full text-center p-12 opacity-30 select-none">
+               <div className="w-32 h-32 rounded-[40px] bg-white/5 border border-white/5 flex items-center justify-center mb-8 shadow-inner">
+                  <MessageSquare size={48} className="text-white" strokeWidth={1} />
+               </div>
+               <h3 className="text-xl font-black text-white uppercase tracking-widest italic mb-2">Initialize Frequency</h3>
+               <p className="text-xs font-bold text-[#9CA3AF] uppercase tracking-widest max-w-[240px]">Select a conversation to begin end-to-end encrypted neural sync.</p>
+            </div>
+          )}
         </section>
       </div>
 

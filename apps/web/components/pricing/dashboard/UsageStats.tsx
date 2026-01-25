@@ -1,6 +1,5 @@
-
 import React, { useEffect, useState } from 'react';
-import { UsageSummary, UsageMetric } from '../../../../packages/types/index.ts';
+import { UsageSummary, UsageMetric } from '../../../../../packages/types/index.ts';
 
 interface RadialProgressProps {
   metric: UsageMetric;
@@ -18,7 +17,6 @@ const RadialProgress: React.FC<RadialProgressProps> = ({ metric, label, color })
   return (
     <div className="flex flex-col items-center gap-4 group">
       <div className="relative" style={{ width: size, height: size }}>
-        {/* Background Circle */}
         <svg className="w-full h-full -rotate-90">
           <circle
             cx={size / 2}
@@ -28,7 +26,6 @@ const RadialProgress: React.FC<RadialProgressProps> = ({ metric, label, color })
             stroke="#2B2F36"
             strokeWidth={strokeWidth}
           />
-          {/* Progress Circle */}
           <circle
             cx={size / 2}
             cy={size / 2}
@@ -85,7 +82,6 @@ export const UsageStats: React.FC<{ summary: UsageSummary | null }> = ({ summary
           </div>
         </div>
 
-        {/* Progress Grid */}
         <div className="grid grid-cols-3 gap-4 mb-12">
           <RadialProgress 
             label="Translation" 
@@ -104,7 +100,6 @@ export const UsageStats: React.FC<{ summary: UsageSummary | null }> = ({ summary
           />
         </div>
 
-        {/* Alert System */}
         {isWarning && (
           <div className="relative group animate-in zoom-in duration-500">
             <div className="absolute -inset-1 bg-gradient-to-r from-[#EF4444] to-[#F59E0B] rounded-3xl blur opacity-20 group-hover:opacity-40 transition duration-1000"></div>
@@ -128,7 +123,6 @@ export const UsageStats: React.FC<{ summary: UsageSummary | null }> = ({ summary
         )}
       </div>
 
-      {/* Footer Branding */}
       <div className="px-10 py-6 bg-[#2B2F36]/50 border-t border-[#3A3F47] flex items-center justify-between">
         <div className="flex items-center gap-3">
           <div className="w-2 h-2 rounded-full bg-[#007BFF] animate-pulse"></div>

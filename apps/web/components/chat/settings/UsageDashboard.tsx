@@ -1,7 +1,6 @@
-
 import React, { useState, useEffect } from 'react';
-import { usageService } from '../../../../packages/services/usage-service.ts';
-import { UsageSummary, UsageMetric } from '../../../../packages/types/index.ts';
+import { usageService } from '../../../../../packages/services/usage-service.ts';
+import { UsageSummary, UsageMetric } from '../../../../../packages/types/index.ts';
 import { Shield, Zap, TrendingUp } from 'lucide-react';
 
 interface ProgressBarProps {
@@ -11,9 +10,9 @@ interface ProgressBarProps {
 
 const ProgressBar: React.FC<ProgressBarProps> = ({ label, metric }) => {
   const getStatusColor = (percent: number) => {
-    if (percent >= 100) return '#EF4444'; // Error Red
-    if (percent >= 80) return '#FFD700';  // Warning Gold
-    return '#39FF14';                    // Success Green
+    if (percent >= 100) return '#EF4444'; 
+    if (percent >= 80) return '#FFD700';  
+    return '#39FF14';                    
   };
 
   const color = getStatusColor(metric.percentage);

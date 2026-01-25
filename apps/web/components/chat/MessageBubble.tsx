@@ -1,4 +1,3 @@
-
 import React, { useState, useRef, useEffect } from 'react';
 import { chatService } from '../../../../packages/services/chat-service.ts';
 
@@ -10,11 +9,12 @@ interface MessageBubbleProps {
   timestamp: string;
   isEdited?: boolean;
   isDeleted?: boolean;
+  isClustered?: boolean; // New: For clustering visuals
   status?: 'sent' | 'delivered' | 'read' | 'error';
 }
 
 export const MessageBubble: React.FC<MessageBubbleProps> = ({ 
-  id, originalText, translatedText, isMine, timestamp, isEdited, isDeleted, status 
+  id, originalText, translatedText, isMine, timestamp, isEdited, isDeleted, isClustered, status 
 }) => {
   const [showMenu, setShowMenu] = useState(false);
   const [isEditing, setIsEditing] = useState(false);
@@ -71,16 +71,16 @@ export const MessageBubble: React.FC<MessageBubbleProps> = ({
 
   return (
     <div 
-      className={`flex w-full group/msg relative ${isMine ? 'justify-end' : 'justify-start'} animate-in fade-in slide-in-from-${isMine ? 'right' : 'left'}-2 duration-300`}
+      className={`flex w-full group/msg relative ${isMine ? 'justify-end' : 'justify-start'} ${isClustered ? 'mt-1' : 'mt-4'} animate-in fade-in slide-in-from-${isMine ? 'right' : 'left'}-2 duration-300`}
       onContextMenu={handleContextMenu}
     >
       <div 
-        className={`max-w-[85%] px-4 py-3 rounded-[20px] relative shadow-lg transition-all duration-300 min-h-[44px] ${
+        className={`max-w-[85%] md:max-w-[70%] px-4 py-3 rounded-[20px] relative shadow-lg transition-all duration-300 min-h-[44px] flex flex-col ${
           isDeleted ? 'bg-[#1F2329] border border-white/5 text-[#9CA3AF] italic' :
           status === 'error' ? 'bg-[#EF4444]/20 border border-[#EF4444]/40 text-white' :
           isMine 
-            ? 'bg-[#007BFF] text-white rounded-tr-none shadow-[0_5px_15px_rgba(0,123,255,0.15)]' 
-            : 'bg-[#3A3F47] text-white rounded-tl-none border border-white/5'
+            ? `bg-[#007BFF] text-white ${isClustered ? 'rounded-tr-[20px]' : 'rounded-tr-none'} shadow-[0_5px_15px_rgba(0,123,255,0.15)]` 
+            : `bg-[#3A3F47] text-white ${isClustered ? 'rounded-tl-[20px]' : 'rounded-tl-none'} border border-white/5`
         }`}
       >
         {isDeleted ? (
@@ -106,23 +106,28 @@ export const MessageBubble: React.FC<MessageBubbleProps> = ({
             </div>
           </div>
         ) : (
-          <div className="space-y-1.5">
-            {translatedText && (
-              <p className="text-[15px] font-black text-[#39FF14] leading-[1.4] tracking-tight animate-in fade-in">
-                {translatedText}
+          <div className="space-y-2">
+            {/* Show original first then translated for side-by-side consistency */}
+            <div className="flex flex-col gap-1.5">
+              <p className={`${translatedText ? 'text-[12px] text-white/60' : 'text-[15px] text-white'} font-medium leading-[1.4] whitespace-pre-wrap break-words`}>
+                <span>{originalText || (status === 'error' ? 'Transmission failed' : 'Empty Content')}</span>
+                {isEdited && !isDeleted && (
+                  <span className="text-[9px] font-black text-white/30 ml-2 uppercase italic tracking-tighter">(edited)</span>
+                )}
               </p>
-            )}
-            <p className={`${translatedText ? 'text-[12px] text-white/60' : 'text-[15px] text-white'} font-medium leading-[1.4] whitespace-pre-wrap break-words`}>
-              {/* FALLBACK RENDERING: Ensure content is visible regardless of property naming */}
-              <span>{originalText || (status === 'error' ? 'Transmission failed' : 'Empty Content')}</span>
-              {isEdited && !isDeleted && (
-                <span className="text-[9px] font-black text-white/30 ml-2 uppercase italic tracking-tighter">(edited)</span>
+              
+              {translatedText && (
+                <div className="pt-2 border-t border-white/5 mt-1">
+                  <p className="text-[14px] font-black text-[#39FF14] leading-[1.4] tracking-tight animate-in fade-in">
+                    {translatedText}
+                  </p>
+                </div>
               )}
-            </p>
+            </div>
           </div>
         )}
         
-        <div className="flex items-center gap-1.5 mt-1.5 justify-end select-none opacity-40 group-hover:opacity-100 transition-opacity">
+        <div className="flex items-center gap-1.5 mt-2 justify-end select-none opacity-40 group-hover:opacity-100 transition-opacity">
           <span className="text-[8px] font-black uppercase tracking-widest">{formattedTime}</span>
           {isMine && !isDeleted && (
             <div className="flex items-center">
@@ -131,16 +136,16 @@ export const MessageBubble: React.FC<MessageBubbleProps> = ({
                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2.5} d="M12 8v4m0 4h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z" />
                  </svg>
               ) : (
-                <>
-                  <svg className={`w-3 h-3 ${status === 'read' ? 'text-[#39FF14]' : 'text-white/60'}`} fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={3.5} d="M5 13l4 4L19 7" />
+                <div className="flex ml-1">
+                  <svg className={`w-2.5 h-2.5 ${status === 'read' ? 'text-[#39FF14]' : 'text-white/60'}`} fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={4} d="M5 13l4 4L19 7" />
                   </svg>
                   {(status === 'delivered' || status === 'read') && (
-                    <svg className={`w-3 h-3 -ml-2 ${status === 'read' ? 'text-[#39FF14]' : 'text-white/60'}`} fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={3.5} d="M5 13l4 4L19 7" />
+                    <svg className={`w-2.5 h-2.5 -ml-1 ${status === 'read' ? 'text-[#39FF14]' : 'text-white/60'}`} fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={4} d="M5 13l4 4L19 7" />
                     </svg>
                   )}
-                </>
+                </div>
               )}
             </div>
           )}

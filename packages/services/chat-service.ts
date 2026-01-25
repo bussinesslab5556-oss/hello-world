@@ -31,21 +31,18 @@ export class ChatService {
     return this.supabase;
   }
 
-  async getMessages(chatId: string): Promise<Message[]> {
+  async getMessages(chat_id: string): Promise<Message[]> {
     const client = this.getClient();
     if (!client) return [];
 
     const { data, error } = await client
       .from('messages')
-      .select('id, chat_id, sender_id, original_text, translated_text, is_edited, is_deleted, created_at, status')
-      .eq('chat_id', chatId)
+      .select('*, attachments:message_attachments(*)')
+      .eq('chat_id', chat_id)
       .order('created_at', { ascending: true });
 
-    if (error) {
-      console.error('ChatService: Error fetching messages:', error);
-      return [];
-    }
-    return data as Message[];
+    if (error) return [];
+    return data as any[];
   }
 
   async sendMessage(chatId: string, senderId: string, originalText: string, translatedText?: string): Promise<Message | null> {
@@ -59,53 +56,48 @@ export class ChatService {
         sender_id: senderId,
         original_text: originalText,
         translated_text: translatedText || null,
-        is_edited: false,
-        is_deleted: false,
         status: 'sent'
       })
-      .select('id, chat_id, sender_id, original_text, translated_text, is_edited, is_deleted, created_at, status')
+      .select('*, attachments:message_attachments(*)')
       .single();
 
-    if (error) {
-      console.error('ChatService: Failed to dispatch message:', error);
-      return null;
-    }
+    return error ? null : data;
+  }
 
-    return data as Message;
+  /**
+   * New: ATOMIC BATCH COMMIT
+   */
+  async sendBatchMediaMessage(
+    chatId: string, 
+    senderId: string, 
+    text: string, 
+    attachments: { key: string, size: number, type: string, media_type: string, metadata: any }[]
+  ): Promise<boolean> {
+    const client = this.getClient();
+    if (!client) return false;
+
+    const { data, error } = await client.functions.invoke('commit-media-message', {
+      body: { chatId, senderId, text, attachments }
+    });
+
+    return !error && data?.success;
   }
 
   async editMessage(messageId: string, newText: string): Promise<boolean> {
     const client = this.getClient();
     if (!client) return false;
-
-    const { error } = await client
-      .from('messages')
-      .update({
-        original_text: newText,
-        is_edited: true
-      })
-      .eq('id', messageId);
-
+    const { error } = await client.from('messages').update({ original_text: newText, is_edited: true }).eq('id', messageId);
     return !error;
   }
 
   async deleteMessage(messageId: string, type: 'me' | 'everyone'): Promise<boolean> {
     const client = this.getClient();
     if (!client) return false;
-
     if (type === 'everyone') {
-      const { error } = await client
-        .from('messages')
-        .update({ is_deleted: true })
-        .eq('id', messageId);
+      const { error } = await client.from('messages').update({ is_deleted: true }).eq('id', messageId);
       return !error;
     } else {
-      // In this specific implementation, we treat "Delete for me" as a database delete
-      // Real-world would use a visibility toggle per user
-      const { error } = await client
-        .from('messages')
-        .delete()
-        .eq('id', messageId);
+      const { error } = await client.from('messages').delete().eq('id', messageId);
       return !error;
     }
   }
@@ -113,16 +105,7 @@ export class ChatService {
   subscribeToChat(chatId: string, onUpdate: (payload: any) => void) {
     const client = this.getClient();
     if (!client) return () => {};
-
-    const channel = client
-      .channel(`chat:${chatId}`)
-      .on(
-        'postgres_changes',
-        { event: '*', schema: 'public', table: 'messages', filter: `chat_id=eq.${chatId}` },
-        (payload) => onUpdate(payload)
-      )
-      .subscribe();
-
+    const channel = client.channel(`chat:${chatId}`).on('postgres_changes', { event: '*', schema: 'public', table: 'messages', filter: `chat_id=eq.${chatId}` }, (payload) => onUpdate(payload)).subscribe();
     return () => client.removeChannel(channel);
   }
 }

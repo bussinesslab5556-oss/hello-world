@@ -3,6 +3,7 @@ import * as SpeechSDK from 'microsoft-cognitiveservices-speech-sdk';
 import { createClient, SupabaseClient } from '@supabase/supabase-js';
 import { checkUserQuota } from '../utils/quota-engine.ts';
 import { profileService } from './profile-service.ts';
+import { getEnv } from '../utils/env-config.ts';
 
 export class AudioBridgeService {
   private static instance: AudioBridgeService;
@@ -12,9 +13,12 @@ export class AudioBridgeService {
   private quotaInterval: any = null;
 
   private constructor() {
-    const env = typeof process !== 'undefined' ? process.env : {};
-    const url = (env.SUPABASE_URL || '').trim();
-    const key = (env.SUPABASE_ANON_KEY || '').trim();
+    this.initialize();
+  }
+
+  private initialize() {
+    const url = getEnv('SUPABASE_URL');
+    const key = getEnv('SUPABASE_ANON_KEY');
     if (url && key) {
       this.supabase = createClient(url, key);
     }
@@ -31,10 +35,12 @@ export class AudioBridgeService {
     const profile = await profileService.getProfile(userId);
     if (!profile || !this.supabase) return;
 
-    const env = typeof process !== 'undefined' ? process.env : {};
+    const azureKey = getEnv('AZURE_SPEECH_KEY');
+    const azureRegion = getEnv('AZURE_SPEECH_REGION');
+
     const speechConfig = SpeechSDK.SpeechConfig.fromSubscription(
-      env.AZURE_SPEECH_KEY || '',
-      env.AZURE_SPEECH_REGION || ''
+      azureKey || '',
+      azureRegion || ''
     );
     speechConfig.speechRecognitionLanguage = profile.primary_language || 'en-US';
     speechConfig.speechSynthesisVoiceName = this.getAzureVoice(profile.tone_control || 'Professional', targetLang);

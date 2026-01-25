@@ -1,8 +1,7 @@
-
 import React, { useState, useEffect } from 'react';
-import { profileService } from '../../../../packages/services/profile-service.ts';
-import { storageService } from '../../../../packages/services/storage-service.ts';
-import { Profile } from '../../../../packages/types/profile.ts';
+import { profileService } from '../../../../../packages/services/profile-service.ts';
+import { storageService } from '../../../../../packages/services/storage-service.ts';
+import { Profile } from '../../../../../packages/types/profile.ts';
 import { Camera, Check, User } from 'lucide-react';
 
 const LANGUAGES = [
@@ -68,7 +67,6 @@ export const ProfileSection: React.FC<{ userId: string }> = ({ userId }) => {
 
   return (
     <div className="space-y-8 animate-in fade-in slide-in-from-bottom-4 duration-500">
-      {/* Avatar Section */}
       <div className="flex flex-col items-center">
         <div className="relative group">
           <div className="w-24 h-24 rounded-full bg-[#2B2F36] border-4 border-[#39FF14] overflow-hidden flex items-center justify-center shadow-[0_0_30px_rgba(57,255,20,0.15)]">
@@ -91,7 +89,6 @@ export const ProfileSection: React.FC<{ userId: string }> = ({ userId }) => {
         <h4 className="text-[10px] font-black text-[#9CA3AF] uppercase tracking-widest mt-4">Profile Identity</h4>
       </div>
 
-      {/* Input Fields */}
       <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
         <div className="space-y-2">
           <label className="text-[10px] font-black text-[#9CA3AF] uppercase tracking-widest px-1">Display Name</label>
@@ -118,7 +115,6 @@ export const ProfileSection: React.FC<{ userId: string }> = ({ userId }) => {
         </div>
       </div>
 
-      {/* Language Section */}
       <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
         <div className="space-y-2">
           <label className="text-[10px] font-black text-[#9CA3AF] uppercase tracking-widest px-1">Native Language</label>

@@ -1,4 +1,3 @@
-
 import React, { useState, useEffect, useRef } from 'react';
 import { chatService } from '../../../../packages/services/chat-service.ts';
 import { usageService } from '../../../../packages/services/usage-service.ts';
@@ -46,8 +45,8 @@ export const ChatWindow: React.FC<ChatWindowProps> = ({ chatId, currentUserId, r
     };
   };
 
-  const scrollToBottom = () => {
-    messagesEndRef.current?.scrollIntoView({ behavior: 'smooth' });
+  const scrollToBottom = (behavior: ScrollBehavior = 'smooth') => {
+    messagesEndRef.current?.scrollIntoView({ behavior });
   };
 
   useEffect(() => {
@@ -69,6 +68,7 @@ export const ChatWindow: React.FC<ChatWindowProps> = ({ chatId, currentUserId, r
         const history = await chatService.getMessages(chatId);
         const normalized = (history || []).map(normalize);
         setMessages(normalized);
+        setTimeout(() => scrollToBottom('auto'), 100);
       } catch (err) {
         console.error('Failed to load history:', err);
       } finally {
@@ -143,6 +143,7 @@ export const ChatWindow: React.FC<ChatWindowProps> = ({ chatId, currentUserId, r
     <div className="w-full h-full md:rounded-[32px] bg-[#1F2329] border border-[#3A3F47] overflow-hidden flex flex-col shadow-2xl relative transition-all duration-500">
       <ChatHeader 
         recipientName={recipientName}
+        userId={currentUserId}
         isTranslationEnabled={isEnabled}
         onToggleTranslation={setIsEnabled}
         targetLanguage={targetLanguage}
@@ -153,7 +154,7 @@ export const ChatWindow: React.FC<ChatWindowProps> = ({ chatId, currentUserId, r
 
       <section 
         ref={scrollRef}
-        className="flex-1 overflow-y-auto px-6 py-10 space-y-6 scroll-smooth custom-scrollbar relative min-h-0"
+        className="flex-1 overflow-y-auto px-6 py-4 space-y-1 scroll-smooth custom-scrollbar relative min-h-0"
         style={{ backgroundImage: 'radial-gradient(circle at 50% 50%, rgba(57,255,20,0.01) 0%, transparent 80%)' }}
       >
         {loading ? (
@@ -165,22 +166,43 @@ export const ChatWindow: React.FC<ChatWindowProps> = ({ chatId, currentUserId, r
             <p className="text-[11px] font-black uppercase tracking-[0.5em] italic text-[#9CA3AF]">Secure Connection Established</p>
           </div>
         ) : (
-          <>
-            {messages.map((msg, index) => (
-              <MessageBubble
-                key={msg.id || `msg-${index}`}
-                id={msg.id}
-                originalText={msg.originalText}
-                translatedText={msg.translatedText}
-                isMine={msg.senderId === currentUserId}
-                timestamp={msg.createdAt}
-                status={msg.status}
-                isEdited={msg.isEdited}
-                isDeleted={msg.isDeleted}
-              />
-            ))}
-            <div ref={messagesEndRef} className="h-px w-full" />
-          </>
+          <div className="flex flex-col">
+            {messages.map((msg, index) => {
+              const prevMsg = index > 0 ? messages[index - 1] : null;
+              
+              const showDateSeparator = !prevMsg || 
+                new Date(msg.createdAt).toDateString() !== new Date(prevMsg.createdAt).toDateString();
+              
+              const timeDiff = prevMsg ? (new Date(msg.createdAt).getTime() - new Date(prevMsg.createdAt).getTime()) / 60000 : 0;
+              const isClustered = prevMsg && prevMsg.senderId === msg.senderId && timeDiff < 5;
+
+              return (
+                <React.Fragment key={msg.id || `msg-${index}`}>
+                  {showDateSeparator && (
+                    <div className="flex items-center justify-center my-8">
+                      <div className="h-px flex-1 bg-white/5"></div>
+                      <span className="px-4 text-[9px] font-black text-white/30 uppercase tracking-[0.3em]">
+                        {new Date(msg.createdAt).toLocaleDateString(undefined, { weekday: 'long', month: 'short', day: 'numeric' })}
+                      </span>
+                      <div className="h-px flex-1 bg-white/5"></div>
+                    </div>
+                  )}
+                  <MessageBubble
+                    id={msg.id}
+                    originalText={msg.originalText}
+                    translatedText={msg.translatedText}
+                    isMine={msg.senderId === currentUserId}
+                    timestamp={msg.createdAt}
+                    status={msg.status}
+                    isEdited={msg.isEdited}
+                    isDeleted={msg.isDeleted}
+                    isClustered={isClustered}
+                  />
+                </React.Fragment>
+              );
+            })}
+            <div ref={messagesEndRef} className="h-px w-full shrink-0" />
+          </div>
         )}
 
         {isTranslating && (
@@ -194,7 +216,7 @@ export const ChatWindow: React.FC<ChatWindowProps> = ({ chatId, currentUserId, r
       </section>
 
       <footer className="p-5 bg-[#2B2F36] border-t border-[#3A3F47] shadow-inner shrink-0">
-        <ChatInput onSend={handleSendMessage} currentUserId={currentUserId} disabled={loading || isTranslating} />
+        <ChatInput onSend={handleSendMessage} currentUserId={currentUserId} chatId={chatId} disabled={loading || isTranslating} />
       </footer>
 
       <style>{`

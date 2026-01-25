@@ -1,3 +1,4 @@
+
 import { createClient, SupabaseClient } from '@supabase/supabase-js';
 import { Profile } from '../types/index.ts';
 import { getEnv } from '../utils/env-config.ts';
@@ -35,6 +36,15 @@ export class ProfileService {
     return this.supabase;
   }
 
+  /**
+   * Validates if a string is a valid UUID to prevent Postgres 400 errors.
+   */
+  private isValidUuid(uuid: string): boolean {
+    if (!uuid || typeof uuid !== 'string' || uuid === 'null' || uuid === 'undefined') return false;
+    const uuidRegex = /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i;
+    return uuidRegex.test(uuid);
+  }
+
   async isUsernameAvailable(username: string): Promise<boolean> {
     const client = this.getClient();
     if (!client) return true;
@@ -49,6 +59,11 @@ export class ProfileService {
   }
 
   async getProfile(userId: string): Promise<Profile | null> {
+    if (!this.isValidUuid(userId)) {
+      console.warn(`ProfileService: Aborted fetch for invalid UUID: ${userId}`);
+      return null;
+    }
+
     const client = this.getClient();
     if (!client) return null;
 
@@ -62,6 +77,10 @@ export class ProfileService {
   }
 
   async updateProfile(userId: string, updates: Partial<Profile>): Promise<{ success: boolean; error?: string }> {
+    if (!this.isValidUuid(userId)) {
+      return { success: false, error: 'Invalid User Identity Link (ID null)' };
+    }
+
     const client = this.getClient();
     if (!client) return { success: false, error: 'Service configuration missing' };
 
